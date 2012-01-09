@@ -1,5 +1,5 @@
 
-#A patch for the PHP OpenSSL extension
+#A patch for the PHP OpenSSL extension implementing native SPKI support
 
   I needed a place to put this for future work. The patch implements five
   new native functions within the PHP OpenSSL extension for handling SPKAC
