@@ -54,6 +54,8 @@ openssl_spki_new($private_key, $challgen, 'sha512');
 ```
 
 ## Verification
+  You can verify an existing SPKAC (possibly one generated from the HTML5
+  KeyGen element)
 
 ### Verifying an existing SPKAC
   Returns boolean true/false value
@@ -62,6 +64,24 @@ openssl_spki_new($private_key, $challgen, 'sha512');
 openssl_spki_verify($spkac);
 ```
 
+## Extracting from SPKAC
+  You may wish use the SPKAC for more then just generating certificate
+  signing requests. The next two functions will allow you retrieve the
+  formatted public key as well as the associated challenge from the SPKAC.
+
+### Extracting the challenge
+  Returns challenge string
+
+```php
+openssl_spki_export_challenge($spkac);
+```
+
+### Extracting the public key
+  Returns a formatted string containing the public key
+
+```php
+openssl_spki_export($spkac);
+```
 
 
 ## INSTALLATION:
