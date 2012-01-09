@@ -49,6 +49,8 @@ openssl_spki_new($private_key, $challenge, 'sha1');
 openssl_spki_new($private_key, $challgen, 'sha512');
 ```
 
+## Verification
+
 ### Verifying an existing SPKAC
   Returns boolean true/false value
 ```
