@@ -19,6 +19,31 @@
 * Extract public key form SPKAC
 * Print formatted details of SPKAC
 
+## USAGE EXAMPLES:
+### Creating a new SPKAC with defaults (sha256 signature)
+
+```
+openssl_spki_new($private_key, $challenge);
+```
+
+### Creating a new SPKAC using MD5 signature
+
+```
+openssl_spki_new($private_key, $challenge, 'md5');
+```
+
+### Creating new SPKAC using sha1 signature
+
+```
+openssl_spki_new($private_key, $challenge, 'sha1');
+```
+
+### Creating new SPKAC using sha512 signature
+
+```
+openssl_spki_new($private_key, $challgen, 'sha512');
+```
+
 ## INSTALLATION:
 * Download & install latest OpenSSL stable (0.9.8x or 1.0.x)
 * Download & install latest PHP stable (5.3.x)
