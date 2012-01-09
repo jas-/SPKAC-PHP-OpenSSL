@@ -20,29 +20,42 @@
 * Print formatted details of SPKAC
 
 ## USAGE EXAMPLES:
-### Creating a new SPKAC with defaults (sha256 signature)
+  Here is a complete list of the functions this patch implements as well as
+  usage examples of how ot use them.
 
+## Creating new SPKAC's
+
+### Creating a new SPKAC with defaults (sha256 signature)
+  Returns SPKAC string
 ```
 openssl_spki_new($private_key, $challenge);
 ```
 
 ### Creating a new SPKAC using MD5 signature
-
+  Returns SPKAC string
 ```
 openssl_spki_new($private_key, $challenge, 'md5');
 ```
 
 ### Creating new SPKAC using sha1 signature
-
+  Returns SPKAC string
 ```
 openssl_spki_new($private_key, $challenge, 'sha1');
 ```
 
 ### Creating new SPKAC using sha512 signature
-
+  Returns SPKAC string
 ```
 openssl_spki_new($private_key, $challgen, 'sha512');
 ```
+
+### Verifying an existing SPKAC
+  Returns boolean true/false value
+```
+openssl_spki_verify($spkac);
+```
+
+
 
 ## INSTALLATION:
 * Download & install latest OpenSSL stable (0.9.8x or 1.0.x)
