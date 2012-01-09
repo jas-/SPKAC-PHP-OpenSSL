@@ -27,25 +27,29 @@
 
 ### Creating a new SPKAC with defaults (sha256 signature)
   Returns SPKAC string
+
 ```
 openssl_spki_new($private_key, $challenge);
 ```
 
 ### Creating a new SPKAC using MD5 signature
   Returns SPKAC string
-```
+
+```php
 openssl_spki_new($private_key, $challenge, 'md5');
 ```
 
 ### Creating new SPKAC using sha1 signature
   Returns SPKAC string
-```
+
+```php
 openssl_spki_new($private_key, $challenge, 'sha1');
 ```
 
 ### Creating new SPKAC using sha512 signature
   Returns SPKAC string
-```
+
+```php
 openssl_spki_new($private_key, $challgen, 'sha512');
 ```
 
@@ -53,7 +57,8 @@ openssl_spki_new($private_key, $challgen, 'sha512');
 
 ### Verifying an existing SPKAC
   Returns boolean true/false value
-```
+
+```php
 openssl_spki_verify($spkac);
 ```
 
