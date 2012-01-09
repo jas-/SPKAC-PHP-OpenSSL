@@ -25,12 +25,14 @@
 * Clone this repo into root of extracted PHP source code
 * Run these commands:
 
-```%> patch -p0 < 12.28.2012-spki.patch
+```
+%> patch -p0 < 12.28.2012-spki.patch
 %> cd php-5.3.x
 %> ./configure --with-openssl
 %> make
 %> make test | grep spki
 %> make install
+```
 
 Once it is installed you can use either test case provided to test.
 
