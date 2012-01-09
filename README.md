@@ -83,6 +83,16 @@ openssl_spki_export_challenge($spkac);
 openssl_spki_export($spkac);
 ```
 
+## SPKAC details
+  This next function may be unnecessary but will provide a formatted copy of the
+  details of the SPKAC (the signature algorithm, the associated challenge string,
+  the public key modulus etc.)
+
+### Providing details of SPKAC
+
+```php
+openssl_spki_details($spkac);
+```
 
 ## INSTALLATION:
 * Download & install latest OpenSSL stable (0.9.8x or 1.0.x)
