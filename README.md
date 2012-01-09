@@ -101,7 +101,7 @@ openssl_spki_details($spkac);
 * Run these commands:
 
 ```
-%> patch -p0 < 12.28.2012-spki.patch
+%> patch -p0 < php-openssl-spki.patch
 %> cd php-5.3.x
 %> ./configure --with-openssl
 %> make
