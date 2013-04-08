@@ -1,6 +1,6 @@
-diff -NaurBb php-src/ext/openssl/openssl.c php-src-spkac/ext/openssl/openssl.c
+diff -NaurBb php-src/ext/openssl/openssl.c php-src/ext/openssl/openssl.c
 --- php-src/ext/openssl/openssl.c	2013-04-08 10:09:10.197169336 -0600
-+++ php-src-spkac/ext/openssl/openssl.c	2013-04-08 10:06:35.216411669 -0600
++++ php-src/ext/openssl/openssl.c	2013-04-08 10:06:35.216411669 -0600
 @@ -391,11 +392,35 @@
      ZEND_ARG_INFO(0, length)
      ZEND_ARG_INFO(1, result_is_strong)
@@ -326,9 +326,9 @@ diff -NaurBb php-src/ext/openssl/openssl.c php-src-spkac/ext/openssl/openssl.c
  /* {{{ proto bool openssl_x509_export(mixed x509, string &out [, bool notext = true])
     Exports a CERT to file or a var */
  PHP_FUNCTION(openssl_x509_export)
-diff -NaurBb php-src/ext/openssl/php_openssl.h php-src-spkac/ext/openssl/php_openssl.h
+diff -NaurBb php-src/ext/openssl/php_openssl.h php-src/ext/openssl/php_openssl.h
 --- php-src/ext/openssl/php_openssl.h	2013-04-08 10:09:10.201169351 -0600
-+++ php-src-spkac/ext/openssl/php_openssl.h	2013-04-08 10:06:35.216411669 -0600
++++ php-src/ext/openssl/php_openssl.h	2013-04-08 10:06:35.216411669 -0600
 @@ -79,6 +79,11 @@
  PHP_FUNCTION(openssl_csr_sign);
  PHP_FUNCTION(openssl_csr_get_subject);
@@ -341,9 +341,9 @@ diff -NaurBb php-src/ext/openssl/php_openssl.h php-src-spkac/ext/openssl/php_ope
  #else
  
  #define phpext_openssl_ptr NULL
-diff -NaurBb php-src/ext/openssl/tests/openssl_spki_export_challenge.phpt php-src-spkac/ext/openssl/tests/openssl_spki_export_challenge.phpt
+diff -NaurBb php-src/ext/openssl/tests/openssl_spki_export_challenge.phpt php-src/ext/openssl/tests/openssl_spki_export_challenge.phpt
 --- php-src/ext/openssl/tests/openssl_spki_export_challenge.phpt	1969-12-31 17:00:00.000000000 -0700
-+++ php-src-spkac/ext/openssl/tests/openssl_spki_export_challenge.phpt	2013-04-08 10:06:35.224411708 -0600
++++ php-src/ext/openssl/tests/openssl_spki_export_challenge.phpt	2013-04-08 10:06:35.224411708 -0600
 @@ -0,0 +1,105 @@
 +--TEST--
 +Testing openssl_spki_export_challenge()
@@ -450,9 +450,9 @@ diff -NaurBb php-src/ext/openssl/tests/openssl_spki_export_challenge.phpt php-sr
 +bool\(false\)
 +string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
 +bool\(false\)
-diff -NaurBb php-src/ext/openssl/tests/openssl_spki_export.phpt php-src-spkac/ext/openssl/tests/openssl_spki_export.phpt
+diff -NaurBb php-src/ext/openssl/tests/openssl_spki_export.phpt php-src/ext/openssl/tests/openssl_spki_export.phpt
 --- php-src/ext/openssl/tests/openssl_spki_export.phpt	1969-12-31 17:00:00.000000000 -0700
-+++ php-src-spkac/ext/openssl/tests/openssl_spki_export.phpt	2013-04-08 10:06:35.224411708 -0600
++++ php-src/ext/openssl/tests/openssl_spki_export.phpt	2013-04-08 10:06:35.224411708 -0600
 @@ -0,0 +1,62 @@
 +--TEST--
 +Testing openssl_spki_export()
@@ -516,9 +516,9 @@ diff -NaurBb php-src/ext/openssl/tests/openssl_spki_export.phpt php-src-spkac/ex
 +\-\-\-\-\-BEGIN PUBLIC KEY\-\-\-\-\-.*\-\-\-\-\-END PUBLIC KEY\-\-\-\-\-
 +\-\-\-\-\-BEGIN PUBLIC KEY\-\-\-\-\-.*\-\-\-\-\-END PUBLIC KEY\-\-\-\-\-
 +\-\-\-\-\-BEGIN PUBLIC KEY\-\-\-\-\-.*\-\-\-\-\-END PUBLIC KEY\-\-\-\-\-
-diff -NaurBb php-src/ext/openssl/tests/openssl_spki_new.phpt php-src-spkac/ext/openssl/tests/openssl_spki_new.phpt
+diff -NaurBb php-src/ext/openssl/tests/openssl_spki_new.phpt php-src/ext/openssl/tests/openssl_spki_new.phpt
 --- php-src/ext/openssl/tests/openssl_spki_new.phpt	1969-12-31 17:00:00.000000000 -0700
-+++ php-src-spkac/ext/openssl/tests/openssl_spki_new.phpt	2013-04-08 10:06:35.224411708 -0600
++++ php-src/ext/openssl/tests/openssl_spki_new.phpt	2013-04-08 10:06:35.224411708 -0600
 @@ -0,0 +1,77 @@
 +--TEST--
 +Testing openssl_spki_new()
@@ -597,9 +597,9 @@ diff -NaurBb php-src/ext/openssl/tests/openssl_spki_new.phpt php-src-spkac/ext/o
 +string(1510) "%s"
 +string(1510) "%s"
 +string(1506) "%s"
-diff -NaurBb php-src/ext/openssl/tests/openssl_spki_verify.phpt php-src-spkac/ext/openssl/tests/openssl_spki_verify.phpt
+diff -NaurBb php-src/ext/openssl/tests/openssl_spki_verify.phpt php-src/ext/openssl/tests/openssl_spki_verify.phpt
 --- php-src/ext/openssl/tests/openssl_spki_verify.phpt	1969-12-31 17:00:00.000000000 -0700
-+++ php-src-spkac/ext/openssl/tests/openssl_spki_verify.phpt	2013-04-08 10:06:35.224411708 -0600
++++ php-src/ext/openssl/tests/openssl_spki_verify.phpt	2013-04-08 10:06:35.224411708 -0600
 @@ -0,0 +1,105 @@
 +--TEST--
 +Testing openssl_spki_verify()
