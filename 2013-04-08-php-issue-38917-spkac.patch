@@ -1,0 +1,709 @@
+diff -NaurBb php-src/ext/openssl/openssl.c php-src-spkac/ext/openssl/openssl.c
+--- php-src/ext/openssl/openssl.c	2013-04-08 10:09:10.197169336 -0600
++++ php-src-spkac/ext/openssl/openssl.c	2013-04-08 10:06:35.216411669 -0600
+@@ -391,11 +392,35 @@
+     ZEND_ARG_INFO(0, length)
+     ZEND_ARG_INFO(1, result_is_strong)
+ ZEND_END_ARG_INFO()
++
++ZEND_BEGIN_ARG_INFO_EX(arginfo_openssl_spki_new, 0, 0, 2)
++    ZEND_ARG_INFO(0, privkey)
++    ZEND_ARG_INFO(0, challenge)
++    ZEND_ARG_INFO(0, algo)
++ZEND_END_ARG_INFO()
++
++ZEND_BEGIN_ARG_INFO(arginfo_openssl_spki_verify, 0)
++    ZEND_ARG_INFO(0, spki)
++ZEND_END_ARG_INFO()
++
++ZEND_BEGIN_ARG_INFO(arginfo_openssl_spki_export, 0)
++    ZEND_ARG_INFO(0, spki)
++ZEND_END_ARG_INFO()
++
++ZEND_BEGIN_ARG_INFO(arginfo_openssl_spki_export_challenge, 0)
++    ZEND_ARG_INFO(0, spki)
++ZEND_END_ARG_INFO()
+ /* }}} */
+ 
+ /* {{{ openssl_functions[]
+  */
+ const zend_function_entry openssl_functions[] = {
++/* spki functions */
++	PHP_FE(openssl_spki_new, arginfo_openssl_spki_new)
++	PHP_FE(openssl_spki_verify, arginfo_openssl_spki_verify)
++	PHP_FE(openssl_spki_export, arginfo_openssl_spki_export)
++	PHP_FE(openssl_spki_export_challenge, arginfo_openssl_spki_export_challenge)
++
+ /* public/private key functions */
+ 	PHP_FE(openssl_pkey_free,			arginfo_openssl_pkey_free)
+ 	PHP_FE(openssl_pkey_new,			arginfo_openssl_pkey_new)
+@@ -790,6 +815,7 @@
+ 
+ static const EVP_CIPHER * php_openssl_get_evp_cipher_from_algo(long algo);
+ 
++int openssl_spki_cleanup(const char *src, char *dest);
+ 
+ static int php_openssl_parse_config(struct php_x509_request * req, zval * optional_args TSRMLS_DC) /* {{{ */
+ {
+@@ -1334,6 +1360,280 @@
+ }
+ /* }}} */
+ 
++/* {{{ proto string openssl_spki_new(mixed zpkey, string challenge [, mixed method])
++   Creates new private key (or uses existing) and creates a new spki cert
++   outputting results to var */
++PHP_FUNCTION(openssl_spki_new)
++{
++	int challenge_len;
++	char * challenge = NULL, * spkstr = NULL, * s = NULL;
++	long keyresource = -1;
++	const char *spkac = "SPKAC=";
++	long algo = OPENSSL_ALGO_MD5;
++
++	zval *method = NULL;
++	zval * zpkey = NULL;
++	EVP_PKEY * pkey = NULL;
++	NETSCAPE_SPKI *spki=NULL;
++	const EVP_MD *mdtype;
++
++	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rs|z", &zpkey, &challenge, &challenge_len, &method) == FAILURE) {
++		return;
++	}
++	RETVAL_FALSE;
++
++	pkey = php_openssl_evp_from_zval(&zpkey, 0, challenge, 1, &keyresource TSRMLS_CC);
++
++	if (pkey == NULL) {
++		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Unable to use supplied private key");
++		goto cleanup;
++	}
++
++	if (method != NULL) {
++		if (Z_TYPE_P(method) == IS_LONG) {
++			algo = Z_LVAL_P(method);
++		} else {
++			php_error_docref(NULL TSRMLS_CC, E_WARNING, "Algorithm must be of supported type");
++			goto cleanup;
++		}
++	}
++	mdtype = php_openssl_get_evp_md_from_algo(algo);
++
++	if (!mdtype) {
++		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Unknown signature algorithm");
++		goto cleanup;
++	}
++
++	if ((spki = NETSCAPE_SPKI_new()) == NULL) {
++		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Unable to create new SPKAC");
++		goto cleanup;
++	}
++
++	if (challenge) {
++		ASN1_STRING_set(spki->spkac->challenge, challenge, (int)strlen(challenge));
++	}
++
++	if (!NETSCAPE_SPKI_set_pubkey(spki, pkey)) {
++		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Unable to embed public key");
++		goto cleanup;
++	}
++
++	if (!NETSCAPE_SPKI_sign(spki, pkey, mdtype)) {
++		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Unable to sign with specified algorithm");
++		goto cleanup;
++	}
++
++	spkstr = NETSCAPE_SPKI_b64_encode(spki);
++	if (!spkstr){
++		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Unable to encode SPKAC");
++		goto cleanup;
++	}
++
++	s = emalloc(strlen(spkac) + strlen(spkstr) + 1);
++	sprintf(s, "%s%s", spkac, spkstr);
++
++	RETVAL_STRINGL(s, strlen(s), 0);
++	goto cleanup;
++
++cleanup:
++
++	if (keyresource == -1 && spki != NULL) {
++		NETSCAPE_SPKI_free(spki);
++	}
++	if (keyresource == -1 && pkey != NULL) {
++		EVP_PKEY_free(pkey);
++	}
++	if (keyresource == -1 && spkstr != NULL) {
++		efree(spkstr);
++	}
++
++	if (strlen(s) <= 0) {
++		RETVAL_FALSE;
++	}
++
++	if (keyresource == -1 && s != NULL) {
++		efree(s);
++	}
++}
++/* }}} */
++
++/* {{{ proto bool openssl_spki_verify(string spki)
++   Verifies spki returns boolean */
++PHP_FUNCTION(openssl_spki_verify)
++{
++	int spkstr_len, i = 0;
++	char *spkstr = NULL, * spkstr_cleaned = NULL;
++
++	EVP_PKEY *pkey = NULL;
++	NETSCAPE_SPKI *spki = NULL;
++
++	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &spkstr, &spkstr_len) == FAILURE) {
++		return;
++	}
++	RETVAL_FALSE;
++
++	if (spkstr == NULL) {
++		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Unable to use supplied SPKAC");
++		goto cleanup;
++	}
++
++	spkstr_cleaned = emalloc(spkstr_len + 1);
++	openssl_spki_cleanup(spkstr, spkstr_cleaned);
++
++	if (strlen(spkstr_cleaned)<=0) {
++		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Invalid SPKAC");
++		goto cleanup;
++	}
++
++	spki = NETSCAPE_SPKI_b64_decode(spkstr_cleaned, strlen(spkstr_cleaned));
++	if (spki == NULL) {
++		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Unable to decode supplied SPKAC");
++		goto cleanup;
++	}
++
++	pkey = X509_PUBKEY_get(spki->spkac->pubkey);
++	if (pkey == NULL) {
++		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Unable to aquire signed public key");
++		goto cleanup;
++	}
++
++	i = NETSCAPE_SPKI_verify(spki, pkey);
++	goto cleanup;
++
++cleanup:
++	if (spki != NULL) {
++		NETSCAPE_SPKI_free(spki);
++	}
++	if (pkey != NULL) {
++		EVP_PKEY_free(pkey);
++	}
++	if (spkstr_cleaned != NULL) {
++		efree(spkstr_cleaned);
++	}
++
++	if (i > 0) {
++		RETVAL_TRUE;
++	}
++}
++/* }}} */
++
++/* {{{ proto string openssl_spki_export(string spki)
++   Exports public key from existing spki to var */
++PHP_FUNCTION(openssl_spki_export)
++{
++	int spkstr_len;
++	char *spkstr = NULL, * spkstr_cleaned = NULL, * s = NULL;
++
++	EVP_PKEY *pkey = NULL;
++	NETSCAPE_SPKI *spki = NULL;
++	BIO *out = BIO_new(BIO_s_mem());
++	BUF_MEM *bio_buf;
++
++	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &spkstr, &spkstr_len) == FAILURE) {
++		return;
++	}
++	RETVAL_FALSE;
++
++	if (spkstr == NULL) {
++		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Unable to use supplied SPKAC");
++		goto cleanup;
++	}
++
++	spkstr_cleaned = emalloc(spkstr_len + 1);
++	openssl_spki_cleanup(spkstr, spkstr_cleaned);
++
++	spki = NETSCAPE_SPKI_b64_decode(spkstr_cleaned, strlen(spkstr_cleaned));
++	if (spki == NULL) {
++		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Unable to decode supplied SPKAC");
++		goto cleanup;
++	}
++
++	pkey = X509_PUBKEY_get(spki->spkac->pubkey);
++	if (pkey == NULL) {
++		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Unable to aquire signed public key");
++		goto cleanup;
++	}
++
++	out = BIO_new_fp(stdout, BIO_NOCLOSE);
++	PEM_write_bio_PUBKEY(out, pkey);
++	goto cleanup;
++
++cleanup:
++
++	if (spki != NULL) {
++		NETSCAPE_SPKI_free(spki);
++	}
++	if (out != NULL) {
++		BIO_free_all(out);
++	}
++	if (pkey != NULL) {
++		EVP_PKEY_free(pkey);
++	}
++	if (spkstr_cleaned != NULL) {
++		efree(spkstr_cleaned);
++	}
++	if (s != NULL) {
++		efree(s);
++	}
++}
++/* }}} */
++
++/* {{{ proto string openssl_spki_export_challenge(string spki)
++   Exports spkac challenge from existing spki to var */
++PHP_FUNCTION(openssl_spki_export_challenge)
++{
++	int spkstr_len;
++	char *spkstr = NULL, * spkstr_cleaned = NULL;
++
++	NETSCAPE_SPKI *spki = NULL;
++
++	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &spkstr, &spkstr_len) == FAILURE) {
++		return;
++	}
++	RETVAL_FALSE;
++
++	if (spkstr == NULL) {
++		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Unable to use supplied SPKAC");
++		goto cleanup;
++	}
++
++	spkstr_cleaned = emalloc(spkstr_len + 1);
++	openssl_spki_cleanup(spkstr, spkstr_cleaned);
++
++	spki = NETSCAPE_SPKI_b64_decode(spkstr_cleaned, strlen(spkstr_cleaned));
++	if (spki == NULL) {
++		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Unable to decode SPKAC");
++		goto cleanup;
++	}
++
++	RETVAL_STRING(ASN1_STRING_data(spki->spkac->challenge), 1);
++	goto cleanup;
++
++cleanup:
++	if (spkstr_cleaned != NULL) {
++		efree(spkstr_cleaned);
++	}
++}
++/* }}} */
++
++/* {{{ strip line endings from spkac */
++int openssl_spki_cleanup(const char *src, char *dest)
++{
++    int removed=0;
++
++    while (*src) {
++        if (*src!='\n'&&*src!='\r') {
++            *dest++=*src;
++        } else {
++            ++removed;
++        }
++        ++src;
++    }
++    *dest=0;
++    return removed;
++}
++/* }}} */
++
+ /* {{{ proto bool openssl_x509_export(mixed x509, string &out [, bool notext = true])
+    Exports a CERT to file or a var */
+ PHP_FUNCTION(openssl_x509_export)
+diff -NaurBb php-src/ext/openssl/php_openssl.h php-src-spkac/ext/openssl/php_openssl.h
+--- php-src/ext/openssl/php_openssl.h	2013-04-08 10:09:10.201169351 -0600
++++ php-src-spkac/ext/openssl/php_openssl.h	2013-04-08 10:06:35.216411669 -0600
+@@ -79,6 +79,11 @@
+ PHP_FUNCTION(openssl_csr_sign);
+ PHP_FUNCTION(openssl_csr_get_subject);
+ PHP_FUNCTION(openssl_csr_get_public_key);
++
++PHP_FUNCTION(openssl_spki_new);
++PHP_FUNCTION(openssl_spki_verify);
++PHP_FUNCTION(openssl_spki_export);
++PHP_FUNCTION(openssl_spki_export_challenge);
+ #else
+ 
+ #define phpext_openssl_ptr NULL
+diff -NaurBb php-src/ext/openssl/tests/openssl_spki_export_challenge.phpt php-src-spkac/ext/openssl/tests/openssl_spki_export_challenge.phpt
+--- php-src/ext/openssl/tests/openssl_spki_export_challenge.phpt	1969-12-31 17:00:00.000000000 -0700
++++ php-src-spkac/ext/openssl/tests/openssl_spki_export_challenge.phpt	2013-04-08 10:06:35.224411708 -0600
+@@ -0,0 +1,105 @@
++--TEST--
++Testing openssl_spki_export_challenge()
++Creates SPKAC for all available key sizes & signature algorithms and exports challenge
++--INI--
++error_reporting=0
++--SKIPIF--
++<?php
++if (!extension_loaded("openssl")) die("skip");
++if (!@openssl_pkey_new()) die("skip cannot create private key");
++?>
++--FILE--
++<?php
++
++/* array of private key sizes to test */
++$ksize = array('1024'=>1024,
++			   '2048'=>2048,
++			   '4096'=>4096);
++
++/* array of available hashings to test */
++$algo = array('md4'=>OPENSSL_ALGO_MD4,
++              'md5'=>OPENSSL_ALGO_MD5,
++              'sha1'=>OPENSSL_ALGO_SHA1,
++			  'sha224'=>OPENSSL_ALGO_SHA224,
++              'sha256'=>OPENSSL_ALGO_SHA256,
++              'sha384'=>OPENSSL_ALGO_SHA384,
++              'sha512'=>OPENSSL_ALGO_SHA512,
++              'rmd160'=>OPENSSL_ALGO_RMD160);
++
++/* loop over key sizes for test */
++foreach($ksize as $k => $v) {
++
++	/* generate new private key of specified size to use for tests */
++	$pkey = openssl_pkey_new(array('digest_alg' => 'sha512',
++	                               'private_key_type' => OPENSSL_KEYTYPE_RSA,
++	                               'private_key_bits' => $v));
++	openssl_pkey_export($pkey, $pass);
++
++	/* loop to create and verify results */
++	foreach($algo as $key => $value) {
++		$spkac = openssl_spki_new($pkey, _uuid(), $value);
++		var_dump(openssl_spki_export_challenge(preg_replace('/SPKAC=/', '', $spkac)));
++		var_dump(openssl_spki_export_challenge($spkac.'Make it fail'));
++	}
++	openssl_free_key($pkey);
++}
++
++/* generate a random challenge */
++function _uuid()
++{
++ return sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', mt_rand(0, 0xffff),
++                mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0x0fff) | 0x4000,
++                mt_rand(0, 0x3fff) | 0x8000, mt_rand(0, 0xffff),
++                mt_rand(0, 0xffff), mt_rand(0, 0xffff));
++}
++
++?>
++--EXPECTREGEX--
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
++string\(36\) \"[0-9a-f]{8}\-([0-9a-f]{4}\-){3}[0-9a-f]{12}\"
++bool\(false\)
+diff -NaurBb php-src/ext/openssl/tests/openssl_spki_export.phpt php-src-spkac/ext/openssl/tests/openssl_spki_export.phpt
+--- php-src/ext/openssl/tests/openssl_spki_export.phpt	1969-12-31 17:00:00.000000000 -0700
++++ php-src-spkac/ext/openssl/tests/openssl_spki_export.phpt	2013-04-08 10:06:35.224411708 -0600
+@@ -0,0 +1,62 @@
++--TEST--
++Testing openssl_spki_export()
++Creates SPKAC for all available key sizes & signature algorithms and exports public key
++--SKIPIF--
++<?php
++if (!extension_loaded("openssl")) die("skip");
++if (!@openssl_pkey_new()) die("skip cannot create private key");
++?>
++--FILE--
++<?php
++
++/* array of private key sizes to test */
++$ksize = array('1024'=>1024,
++			   '2048'=>2048,
++			   '4096'=>4096);
++
++/* array of available hashings to test */
++$algo = array('md4'=>OPENSSL_ALGO_MD4,
++              'md5'=>OPENSSL_ALGO_MD5,
++              'sha1'=>OPENSSL_ALGO_SHA1,
++			  'sha224'=>OPENSSL_ALGO_SHA224,
++              'sha256'=>OPENSSL_ALGO_SHA256,
++              'sha384'=>OPENSSL_ALGO_SHA384,
++              'sha512'=>OPENSSL_ALGO_SHA512,
++              'rmd160'=>OPENSSL_ALGO_RMD160);
++
++/* loop over key sizes for test */
++foreach($ksize as $k => $v) {
++
++	/* generate new private key of specified size to use for tests */
++	$pkey = openssl_pkey_new(array('digest_alg' => 'sha512',
++	                               'private_key_type' => OPENSSL_KEYTYPE_RSA,
++	                               'private_key_bits' => $v));
++	openssl_pkey_export($pkey, $pass);
++
++	/* loop to create and verify results */
++	foreach($algo as $key => $value) {
++		$spkac = openssl_spki_new($pkey, _uuid(), $value);
++		echo openssl_spki_export(preg_replace('/SPKAC=/', '', $spkac));
++	}
++	openssl_free_key($pkey);
++}
++
++/* generate a random challenge */
++function _uuid()
++{
++ return sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', mt_rand(0, 0xffff),
++                mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0x0fff) | 0x4000,
++                mt_rand(0, 0x3fff) | 0x8000, mt_rand(0, 0xffff),
++                mt_rand(0, 0xffff), mt_rand(0, 0xffff));
++}
++
++?>
++--EXPECTREGEX--
++\-\-\-\-\-BEGIN PUBLIC KEY\-\-\-\-\-.*\-\-\-\-\-END PUBLIC KEY\-\-\-\-\-
++\-\-\-\-\-BEGIN PUBLIC KEY\-\-\-\-\-.*\-\-\-\-\-END PUBLIC KEY\-\-\-\-\-
++\-\-\-\-\-BEGIN PUBLIC KEY\-\-\-\-\-.*\-\-\-\-\-END PUBLIC KEY\-\-\-\-\-
++\-\-\-\-\-BEGIN PUBLIC KEY\-\-\-\-\-.*\-\-\-\-\-END PUBLIC KEY\-\-\-\-\-
++\-\-\-\-\-BEGIN PUBLIC KEY\-\-\-\-\-.*\-\-\-\-\-END PUBLIC KEY\-\-\-\-\-
++\-\-\-\-\-BEGIN PUBLIC KEY\-\-\-\-\-.*\-\-\-\-\-END PUBLIC KEY\-\-\-\-\-
++\-\-\-\-\-BEGIN PUBLIC KEY\-\-\-\-\-.*\-\-\-\-\-END PUBLIC KEY\-\-\-\-\-
++\-\-\-\-\-BEGIN PUBLIC KEY\-\-\-\-\-.*\-\-\-\-\-END PUBLIC KEY\-\-\-\-\-
+diff -NaurBb php-src/ext/openssl/tests/openssl_spki_new.phpt php-src-spkac/ext/openssl/tests/openssl_spki_new.phpt
+--- php-src/ext/openssl/tests/openssl_spki_new.phpt	1969-12-31 17:00:00.000000000 -0700
++++ php-src-spkac/ext/openssl/tests/openssl_spki_new.phpt	2013-04-08 10:06:35.224411708 -0600
+@@ -0,0 +1,77 @@
++--TEST--
++Testing openssl_spki_new()
++Tests SPKAC for all available private key sizes & hashing algorithms
++--SKIPIF--
++<?php
++if (!extension_loaded("openssl")) die("skip");
++if (!@openssl_pkey_new()) die("skip cannot create private key");
++?>
++--FILE--
++<?php
++
++/* array of private key sizes to test */
++$ksize = array('1024'=>1024,
++			   '2048'=>2048,
++			   '4096'=>4096);
++
++/* array of available hashings to test */
++$algo = array('md4'=>OPENSSL_ALGO_MD4,
++              'md5'=>OPENSSL_ALGO_MD5,
++              'sha1'=>OPENSSL_ALGO_SHA1,
++			  'sha224'=>OPENSSL_ALGO_SHA224,
++              'sha256'=>OPENSSL_ALGO_SHA256,
++              'sha384'=>OPENSSL_ALGO_SHA384,
++              'sha512'=>OPENSSL_ALGO_SHA512,
++              'rmd160'=>OPENSSL_ALGO_RMD160);
++
++/* loop over key sizes for test */
++foreach($ksize as $k => $v) {
++
++	/* generate new private key of specified size to use for tests */
++	$pkey = openssl_pkey_new(array('digest_alg' => 'sha512',
++	                               'private_key_type' => OPENSSL_KEYTYPE_RSA,
++	                               'private_key_bits' => $v));
++	openssl_pkey_export($pkey, $pass);
++
++	/* loop to create and verify results */
++	foreach($algo as $key => $value) {
++		var_dump(openssl_spki_new($pkey, _uuid(), $value));
++	}
++	openssl_free_key($pkey);
++}
++
++/* generate a random challenge */
++function _uuid()
++{
++ return sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', mt_rand(0, 0xffff),
++                mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0x0fff) | 0x4000,
++                mt_rand(0, 0x3fff) | 0x8000, mt_rand(0, 0xffff),
++                mt_rand(0, 0xffff), mt_rand(0, 0xffff));
++}
++
++?>
++--EXPECTF--
++string(478) "%s"
++string(478) "%s"
++string(478) "%s"
++string(478) "%s"
++string(478) "%s"
++string(478) "%s"
++string(478) "%s"
++string(474) "%s"
++string(830) "%s"
++string(830) "%s"
++string(830) "%s"
++string(830) "%s"
++string(830) "%s"
++string(830) "%s"
++string(830) "%s"
++string(826) "%s"
++string(1510) "%s"
++string(1510) "%s"
++string(1510) "%s"
++string(1510) "%s"
++string(1510) "%s"
++string(1510) "%s"
++string(1510) "%s"
++string(1506) "%s"
+diff -NaurBb php-src/ext/openssl/tests/openssl_spki_verify.phpt php-src-spkac/ext/openssl/tests/openssl_spki_verify.phpt
+--- php-src/ext/openssl/tests/openssl_spki_verify.phpt	1969-12-31 17:00:00.000000000 -0700
++++ php-src-spkac/ext/openssl/tests/openssl_spki_verify.phpt	2013-04-08 10:06:35.224411708 -0600
+@@ -0,0 +1,105 @@
++--TEST--
++Testing openssl_spki_verify()
++Creates SPKAC for all available key sizes & signature algorithms and tests for valid signature
++--INI--
++error_reporting=0
++--SKIPIF--
++<?php
++if (!extension_loaded("openssl")) die("skip");
++if (!@openssl_pkey_new()) die("skip cannot create private key");
++?>
++--FILE--
++<?php
++
++/* array of private key sizes to test */
++$ksize = array('1024'=>1024,
++               '2048'=>2048,
++			   '4096'=>4096);
++
++/* array of available hashings to test */
++$algo = array('md4'=>OPENSSL_ALGO_MD4,
++              'md5'=>OPENSSL_ALGO_MD5,
++              'sha1'=>OPENSSL_ALGO_SHA1,
++			  'sha224'=>OPENSSL_ALGO_SHA224,
++              'sha256'=>OPENSSL_ALGO_SHA256,
++              'sha384'=>OPENSSL_ALGO_SHA384,
++              'sha512'=>OPENSSL_ALGO_SHA512,
++              'rmd160'=>OPENSSL_ALGO_RMD160);
++
++/* loop over key sizes for test */
++foreach($ksize as $k => $v) {
++
++	/* generate new private key of specified size to use for tests */
++	$pkey = openssl_pkey_new(array('digest_alg' => 'sha512',
++	                               'private_key_type' => OPENSSL_KEYTYPE_RSA,
++	                               'private_key_bits' => $v));
++	openssl_pkey_export($pkey, $pass);
++
++	/* loop to create and verify results */
++	foreach($algo as $key => $value) {
++		$spkac = openssl_spki_new($pkey, _uuid(), $value);
++		var_dump(openssl_spki_verify(preg_replace('/SPKAC=/', '', $spkac)));
++		var_dump(openssl_spki_verify($spkac.'Make it fail'));
++	}
++	openssl_free_key($pkey);
++}
++
++/* generate a random challenge */
++function _uuid()
++{
++ return sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', mt_rand(0, 0xffff),
++                mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0x0fff) | 0x4000,
++                mt_rand(0, 0x3fff) | 0x8000, mt_rand(0, 0xffff),
++                mt_rand(0, 0xffff), mt_rand(0, 0xffff));
++}
++
++?>
++--EXPECT--
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
++bool(true)
++bool(false)
+\ No newline at end of file
