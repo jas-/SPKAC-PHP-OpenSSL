@@ -1,3 +1,10 @@
+# PHP 5.6 now contains this functionality.
+For anyone visiting this project, the patch has been accepted upstream in the PHP OpenSSL extension as of version 5.6.3. The four functions help docs can be found below:
+
+1. [openssl_spki_new()](http://php.net/manual/en/function.openssl-spki-new.php)
+2. [openssl_spki_verify()](http://php.net/manual/en/function.openssl-spki-verify.php)
+3. [openssl_spki_export()](http://php.net/manual/en/function.openssl-spki-export.php)
+4. [openssl_spki_export_challenge()](http://php.net/manual/en/function.openssl-spki-export-challenge.php)
 
 #Patching the PHP OpenSSL extension to implement native SPKI support
 
